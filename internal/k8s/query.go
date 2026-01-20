@@ -12,12 +12,12 @@ import (
 )
 
 type BindingInfo struct {
-	Name       string
-	Namespace  string
-	Scope      string // ns:<name> or cluster
+	Name        string
+	Namespace   string
+	Scope       string // ns:<name> or cluster
 	RoleRefKind string
 	RoleRefName string
-	Kind       string // RoleBinding or ClusterRoleBinding
+	Kind        string // RoleBinding or ClusterRoleBinding
 }
 
 func FindBindingsBySubject(cl *kubernetes.Clientset, subjectKind, subjectName string) ([]BindingInfo, error) {

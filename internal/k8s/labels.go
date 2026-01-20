@@ -24,5 +24,20 @@ func Labels(subjectKind, subjectName, scope, profile string) map[string]string {
 	return m
 }
 
-func ScopeNS(ns string) string { return fmt.Sprintf("ns:%s", ns) }
-func ScopeCluster() string     { return "cluster" }
+// ScopeNS returns a label-safe namespace scope value.
+//
+// IMPORTANT:
+// Kubernetes label *values* cannot contain ':' (colon).
+// Previous versions used "ns:<namespace>", which causes errors like:
+//
+//	Invalid value: "ns:test1": a valid label must be ...
+//
+// We keep the meaning but replace ':' with a label-safe separator.
+// Example: ns:test1 -> ns.test1
+func ScopeNS(ns string) string {
+	if ns == "" {
+		return "ns"
+	}
+	return fmt.Sprintf("ns.%s", sanitize(ns))
+}
+func ScopeCluster() string { return "cluster" }

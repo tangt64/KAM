@@ -8,8 +8,8 @@ import (
 	"fmt"
 	"strings"
 
-	rbacv1 "k8s.io/api/rbac/v1"
 	corev1 "k8s.io/api/core/v1"
+	rbacv1 "k8s.io/api/rbac/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 )
@@ -85,7 +85,7 @@ func CreateOrUpdateRoleBinding(cl *kubernetes.Clientset, ns, name, clusterRoleNa
 			Namespace: ns,
 			Labels:    lbls,
 		},
-		RoleRef: rbacv1.RoleRef{APIGroup: "rbac.authorization.k8s.io", Kind: "ClusterRole", Name: clusterRoleName},
+		RoleRef:  rbacv1.RoleRef{APIGroup: "rbac.authorization.k8s.io", Kind: "ClusterRole", Name: clusterRoleName},
 		Subjects: []rbacv1.Subject{subject},
 	}
 

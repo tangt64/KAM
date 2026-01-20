@@ -10,11 +10,11 @@ import (
 )
 
 var (
-	kubeconfig string
+	kubeconfig  string
 	contextName string
-	namespace string
-	dryRun bool
-	output string
+	namespace   string
+	dryRun      bool
+	output      string
 )
 
 var rootCmd = &cobra.Command{
