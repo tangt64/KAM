@@ -18,14 +18,12 @@ var (
 )
 
 var rootCmd = &cobra.Command{
-	Use:   "kam",
-	Short: "Kubernetes Account Manager (RBAC/ServiceAccount) - no external IdP",
-	Long: `kam manages Kubernetes RBAC bindings and ServiceAccounts.
-
-Important:
-- Kubernetes does NOT store "User" objects.
-- kam defines a logical user as: a subject name + RBAC bindings.
-- "kam user create" means: declare the user and grant initial access (create RoleBinding/ClusterRoleBinding).
+	Use:     "kam",
+	Version: "0.2.0",
+	Short:   "KIKI KAM: password login, accounts and namespace RBAC",
+	Long: `KIKI KAM manages password login accounts, sessions and namespace access.
+Authentication uses a dedicated HTTPS service and Kubernetes TokenReview webhook.
+Original RBAC-only commands are preserved under "kam legacy".
 `,
 	SilenceUsage:  true,
 	SilenceErrors: true,
@@ -49,7 +47,8 @@ func init() {
 		k8s.SetGlobalKubeconfig(kubeconfig, contextName)
 	})
 
-	rootCmd.AddCommand(userCmd)
-	rootCmd.AddCommand(groupCmd)
-	rootCmd.AddCommand(saCmd)
+	legacy := &cobra.Command{Use: "legacy", Short: "Original KAM RBAC/ServiceAccount commands; no login accounts"}
+	legacy.AddCommand(userCmd, groupCmd, saCmd)
+	rootCmd.AddCommand(legacy)
+	registerAuth()
 }

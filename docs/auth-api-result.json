@@ -1,0 +1,24 @@
+{
+  "started_at": "2026-11-01T13:04:45.672471+00:00",
+  "checks": {
+    "real_password_login_uid_namespace_rbac_no_impersonation": true,
+    "exec_credential_and_private_cache": true,
+    "two_auth_replicas_share_cas_secret_state": true,
+    "auth_service_sa_is_limited_to_one_secret": true,
+    "password_reset_and_logout_revoke_sessions": true,
+    "disable_enable_delete_recreate_do_not_restore_old_access": true,
+    "grant_expiry_revokes_actual_user_access": true,
+    "reinstall_preserves_accounts_and_state_secret_is_private": true,
+    "webhook_requires_dedicated_mtls_client": true,
+    "last_administrator_preserved": true
+  },
+  "status": "passed",
+  "environment": "loopback envtest Kubernetes 1.37.0 + etcd; no kubelet/scheduler/GC",
+  "impersonation_used": false,
+  "revocation_seconds": {
+    "password_reset": 9.192,
+    "logout": 10.101,
+    "account_disable": 9.997
+  },
+  "finished_at": "2026-11-01T13:06:55.551670+00:00"
+}

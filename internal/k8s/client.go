@@ -69,5 +69,5 @@ func buildConfig() (*rest.Config, error) {
 
 func Ctx() context.Context { return context.Background() }
 
-func GetOptions() metav1.GetOptions { return metav1.GetOptions{} }
+func GetOptions() metav1.GetOptions   { return metav1.GetOptions{} }
 func ListOptions() metav1.ListOptions { return metav1.ListOptions{} }

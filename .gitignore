@@ -23,3 +23,16 @@ go.work.sum
 
 # env file
 .env
+
+.tools/
+artifacts/
+__pycache__/
+kam
+kubectl-kam
+*.key
+*.crt
+*.pem
+
+.tools/
+artifacts/
+__pycache__/

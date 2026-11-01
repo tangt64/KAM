@@ -1,0 +1,6 @@
+.git
+.tools
+artifacts
+*.key
+*.pem
+*.crt
