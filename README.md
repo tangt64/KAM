@@ -45,6 +45,7 @@ kubectl kam get -n dev
 kubectl kam permissions -n dev
 kubectl kam namespace list
 kubectl kam namespace use dev
+# --context NAME을 지정하면 그 context만 변경하고 다른 current-context는 유지합니다.
 kubectl kam user passwd alice
 kubectl kam user revoke-sessions alice
 kubectl kam user disable alice

@@ -193,6 +193,19 @@ def main():
             assert kubectl('-n', 'default', 'get', 'pods', cfg=alice_login, required=False).returncode != 0
             assert cli(alice_login, 'user', 'list', required=False).returncode != 0
             cli(alice_login, 'namespace', 'use', 'dev')
+            own_context = kubectl('config', 'current-context', cfg=alice_login).stdout.strip()
+            kubectl('config', 'set-context', own_context, '--namespace=default', cfg=alice_login)
+            kubectl('config', 'set-context', 'unrelated', '--namespace=untouched', cfg=alice_login)
+            kubectl('config', 'use-context', 'unrelated', cfg=alice_login)
+            cli(alice_login, '--context', own_context, 'namespace', 'use', 'dev')
+            contexts = json.loads(kubectl('config', 'view', '-ojson', cfg=alice_login).stdout)
+            assert contexts['current-context'] == 'unrelated'
+            by_name = {c['name']: c['context'] for c in contexts['contexts']}
+            assert by_name['unrelated']['namespace'] == 'untouched'
+            assert by_name[own_context]['namespace'] == 'dev'
+            kubectl('config', 'use-context', own_context, cfg=alice_login)
+            kubectl('config', 'delete-context', 'unrelated', cfg=alice_login)
+            report['checks']['explicit_context_preserves_unrelated_current_namespace'] = True
             cli(alice_login, 'permissions')
             report['checks']['real_password_login_uid_namespace_rbac_no_impersonation'] = True
             # No password or bearer token appears in kubeconfig.

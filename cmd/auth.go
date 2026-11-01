@@ -369,10 +369,11 @@ func registerGrants() {
 	ns := &cobra.Command{Use: "namespace", Short: "Inspect namespaces or select one; never create/delete namespaces"}
 	ns.AddCommand(&cobra.Command{Use: "list", Args: cobra.NoArgs, RunE: func(c *cobra.Command, args []string) error { return kubectl(c, []string{"get", "namespaces"}, nil) }})
 	ns.AddCommand(&cobra.Command{Use: "use NAME", Args: cobra.ExactArgs(1), RunE: func(c *cobra.Command, args []string) error {
-		if _, e := profile(); e != nil {
+		p, e := profile()
+		if e != nil {
 			return e
 		}
-		return kubectl(c, []string{"config", "set-context", "--current", "--namespace", args[0]}, nil)
+		return kubectl(c, []string{"config", "set-context", p.Context, "--namespace", args[0]}, nil)
 	}})
 	rootCmd.AddCommand(ns)
 }

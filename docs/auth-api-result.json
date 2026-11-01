@@ -1,6 +1,7 @@
 {
-  "started_at": "2026-11-01T13:04:45.672471+00:00",
+  "started_at": "2026-11-01T13:19:08.488753+00:00",
   "checks": {
+    "explicit_context_preserves_unrelated_current_namespace": true,
     "real_password_login_uid_namespace_rbac_no_impersonation": true,
     "exec_credential_and_private_cache": true,
     "two_auth_replicas_share_cas_secret_state": true,
@@ -16,9 +17,9 @@
   "environment": "loopback envtest Kubernetes 1.37.0 + etcd; no kubelet/scheduler/GC",
   "impersonation_used": false,
   "revocation_seconds": {
-    "password_reset": 9.192,
-    "logout": 10.101,
-    "account_disable": 9.997
+    "password_reset": 9.243,
+    "logout": 10.14,
+    "account_disable": 10.349
   },
-  "finished_at": "2026-11-01T13:06:55.551670+00:00"
+  "finished_at": "2026-11-01T13:21:55.692013+00:00"
 }
