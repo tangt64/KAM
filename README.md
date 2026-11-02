@@ -85,3 +85,5 @@ GOTOOLCHAIN=go1.26.10 bash tests/validate.sh
 Go race 검사, 공식 Kubernetes 1.37.0 envtest 실제 API/etcd의 CRD·Lease·RBAC 검사, 비밀번호 로그인→exec credential→실제 사용자 API 호출과 폐기 검사를 실행합니다. `--as`를 사용하지 않습니다. 결과는 `.tools/auth-api-result.json`에 비밀 없이 저장합니다. 두 auth 프로세스가 같은 Secret을 공유하는 것도 검사합니다. [검증 기록](docs/VALIDATION.md)을 확인하세요. kubelet·scheduler·native GC·실제 Pod 배치와 VM HA는 이번 새 로그인 검사의 범위 밖입니다.
 
 원래 명령은 `kam legacy user/group/sa ...`로 보존했습니다. [원본 README](docs/LEGACY.md)는 이력 참고이며 기존 logical User/RBAC 명령 자체가 로그인 계정을 생성하지는 않습니다. root `LICENSE`의 GPL-3.0 이력과, 독립 실행 Python controller의 `deploy/LICENSE` GPL-2.0을 유지합니다.
+
+실제 Pod 배포·로그인/RBAC·TLS 갱신·실패 복구 결과와 화면은 [Helm 터미널랩 실증](docs/HELM-LIVE.md)에 있습니다.

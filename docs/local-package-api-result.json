@@ -1,5 +1,5 @@
 {
-  "started_at": "2026-11-02T03:11:09.359439+00:00",
+  "started_at": "2026-11-02T10:40:34.970029+00:00",
   "checks": {
     "helm_install_accepted_by_real_api": true,
     "explicit_context_preserves_unrelated_current_namespace": true,
@@ -20,9 +20,9 @@
   "impersonation_used": false,
   "helm_version": "v4.3.1+gc0d08d0",
   "revocation_seconds": {
-    "password_reset": 9.126,
-    "logout": 10.106,
-    "account_disable": 10.075
+    "password_reset": 10.038,
+    "logout": 10.121,
+    "account_disable": 10.311
   },
-  "finished_at": "2026-11-02T03:13:17.847145+00:00"
+  "finished_at": "2026-11-02T10:42:32.508691+00:00"
 }

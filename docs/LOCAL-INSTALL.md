@@ -25,10 +25,26 @@ GOTOOLCHAIN=go1.26.10 CGO_ENABLED=0 go build -buildvcs=false -trimpath -o .tools
 install -m 0755 .tools/kiki-kam "$HOME/.local/bin/kubectl-kam"
 export PATH="$HOME/.local/bin:$PATH"
 podman build -t localhost/kiki-kam-auth:local .
-podman save -o artifacts/kiki-kam-auth.tar localhost/kiki-kam-auth:local
+podman save --format oci-archive -o artifacts/kiki-kam-auth.tar localhost/kiki-kam-auth:local
 ```
 
-실행 파일·이미지 tar는 Git에 넣지 않습니다. `localhost/kiki-kam-auth:local`을 **실제 Kubernetes 노드의 CRI 이미지 저장소**에 공급하세요. 워크스테이션 rootless Podman 저장소와 노드의 containerd/CRI-O 저장소는 다릅니다. containerd는 노드에서 `sudo ctr -n k8s.io images import /path/kiki-kam-auth.tar`를 사용할 수 있습니다. CRI-O는 해당 노드의 승인한 이미지 공급 방법을 사용합니다. 기본 Python controller 이미지도 고정 digest로 접근 가능해야 하며 완전 오프라인이면 미리 공급하고 `controller.imagePullPolicy: Never`를 설정합니다.
+실행 파일·이미지 tar는 Git에 넣지 않습니다. `localhost/kiki-kam-auth:local`을 **실제 Kubernetes 노드의 CRI 이미지 저장소**에 공급하세요. 워크스테이션 rootless Podman 저장소와 노드의 containerd/CRI-O 저장소는 다릅니다. containerd는 노드에서 `sudo ctr -n k8s.io images import /path/kiki-kam-auth.tar`를 사용할 수 있습니다. 기본 Python controller 이미지도 고정 digest로 접근 가능해야 하며 완전 오프라인이면 미리 공급하고 `controller.imagePullPolicy: Never`를 설정합니다.
+
+CRI-O는 노드의 rootful containers/storage 설정이 CRI-O의 `root`·`runroot`·storage driver와 일치함을 확인한 뒤 다음처럼 가져올 수 있습니다. 터미널랩의 CRI-O 1.37.2 두 worker에서 이 경로와 실제 Pod 실행을 확인했습니다. 저장소 경로를 강제로 바꾸거나 CRI-O 데이터를 초기화하지 않습니다.
+
+```bash
+sudo skopeo copy oci-archive:/path/kiki-kam-auth.tar \
+  containers-storage:localhost/kiki-kam-auth:local
+```
+
+이미지를 빌드했다면 Go를 호스트에 별도로 설치하지 않고 동일 이미지에서 CLI를 꺼낼 수도 있습니다.
+
+```bash
+container_id=$(podman create localhost/kiki-kam-auth:local)
+podman cp "$container_id:/kam" .tools/kiki-kam
+podman rm "$container_id"
+install -m 0755 .tools/kiki-kam "$HOME/.local/bin/kubectl-kam"
+```
 
 운영용은 검토한 registry 이미지의 실제 `@sha256:...`를 `auth.image`에 입력하고 local 옵션을 끕니다. 로컬 태그를 기본 보안 정책에 자동 허용하지 않습니다.
 
@@ -145,4 +161,4 @@ RUN_CHART_VALIDATION=1 GOTOOLCHAIN=go1.26.10 bash tests/validate.sh
 
 Helm은 공식 고정 버전·SHA-256으로 내려받거나 `HELM_BINARY`를 공급합니다. 실제 API/etcd에 Helm install·upgrade·uninstall을 실행하고 사용자 로그인·namespace RBAC·권한 회수와 외부 계정 상태·CRD·namespace 보존을 검사합니다. 이 환경에는 kubelet/scheduler가 없으므로 Pod scheduling·image pull·실제 Helm `--wait` 완료와 VM 장애 전환을 입증하지 않습니다. 결과는 `.tools/local-chart-result.json`, `.tools/package-api-result.json`에 기록합니다.
 
-2026-11-02 로컬 실행에서 lint/render 5개 구성, 잘못된 설정 12가지 거부, 실제 Helm lifecycle·로그인 API 13개 검사를 통과했습니다. [실제 API 원문](local-package-api-result.json)을 확인하세요. 이 기록은 현재 로컬 작업본 기준이며 원격 CI 실행 결과가 아닙니다.
+2026-11-02 로컬 실행에서 lint/render 5개 구성, 잘못된 설정 12가지 거부, 실제 Helm lifecycle·로그인 API 13개 검사를 통과했습니다. [실제 API 원문](local-package-api-result.json)을 확인하세요. 이 API/etcd 기록과 별도로 [터미널랩 실제 Pod·TLS·rollback 실증](HELM-LIVE.md)을 완료했고 양쪽 CI도 확인했습니다. 운영 registry 이미지 pull과 CA migration은 사이트별 검토가 필요합니다.
