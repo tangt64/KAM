@@ -1,0 +1,20 @@
+{{- include "kam.validate" . -}}
+{{- $root := . -}}
+{{- range .Values.controller.targets -}}
+{{- $ns := .namespace -}}
+{{- $name := printf "kam-%s" (trunc 16 (sha256sum $ns)) -}}
+{{- $source := $root.Files.Get "files/controller.json" | replace (toJson "__TARGET_NAMESPACE__") (toJson $ns) | replace (toJson "__CONTROLLER_NAME__") (toJson $name) | replace (toJson "__CONTROLLER_IMAGE__") (toJson $root.Values.controller.image) | replace (toJson "__PROFILES_JSON__") (toJson .profiles) | replace (toJson "__PROFILE_CSV__") (toJson (join "," .profiles)) -}}
+{{- range $doc := ($source | fromJsonArray) -}}
+{{- if eq $doc.kind "Deployment" -}}
+{{- $_ := set $doc.spec "replicas" $root.Values.controller.replicas -}}
+{{- $pod := $doc.spec.template.spec -}}
+{{- $_ := set (index $pod.containers 0) "imagePullPolicy" $root.Values.controller.imagePullPolicy -}}
+{{- $_ := set $pod "imagePullSecrets" $root.Values.imagePullSecrets -}}
+{{- if eq (int $root.Values.controller.replicas) 1 }}{{ $_ := set (index $pod.topologySpreadConstraints 0) "whenUnsatisfiable" "ScheduleAnyway" }}{{ end -}}
+{{- else if eq $doc.kind "PodDisruptionBudget" -}}
+{{- if eq (int $root.Values.controller.replicas) 1 }}{{ $_ := set $doc.spec "minAvailable" 0 }}{{ end -}}
+{{- end }}
+---
+{{ toYaml $doc }}
+{{ end -}}
+{{- end }}

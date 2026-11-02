@@ -1,0 +1,21 @@
+# Existing state/TLS resources are never owned by this chart. Supply auth.image and auth.audience.
+local:
+  allowUnpinnedImages: false
+imagePullSecrets: []
+auth:
+  enabled: true
+  image: ''
+  audience: ''
+  replicas: 2
+  imagePullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    nodePort: 0
+controller:
+  image: docker.io/library/python:3.12.16-slim-bookworm@sha256:623674a14ef93d052bb9b0de4dbf5f28eb578a35263838941cc8aa43213c1487
+  replicas: 2
+  imagePullPolicy: IfNotPresent
+  targets:
+  - namespace: dev
+    profiles:
+    - view

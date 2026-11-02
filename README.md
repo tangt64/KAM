@@ -19,6 +19,8 @@ Windows는 `GOOS=windows`로 빌드하고 사용자 PATH에 `kubectl-kam.exe`를
 
 ## 설치
 
+[로컬 YAML·Helm 설치 안내](docs/LOCAL-INSTALL.md): `charts/kiki-kam/`, 단일 노드 values와 Helm 없는 YAML 생성기를 제공합니다.
+
 권장 설치 경로는 [duststack 연동 안내](https://github.com/tangt64/duststack-k8s-auto/blob/master/docs/KIKI-KAM.md)입니다. 기존 인증서·ServiceAccount 인증을 유지하고 API 서버를 한 대씩 변경합니다. 아래는 수동 설치 구성요소 설명입니다. 예시 도메인과 digest는 실제 환경 값으로 바꿔야 합니다.
 
 1. 기존 관리 자격으로 `kam-system`과 대상 namespace를 준비합니다. 두 replica를 실행할 서로 다른 스케줄 가능한 노드가 필요합니다.

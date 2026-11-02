@@ -1,0 +1,606 @@
+# EDITING EXAMPLE ONLY. Replace API audience and supply images/state/TLS before installation.
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: kamaccessgrants.access.kam.dustbox.kr
+spec:
+  group: access.kam.dustbox.kr
+  scope: Namespaced
+  names:
+    plural: kamaccessgrants
+    singular: kamaccessgrant
+    kind: KamAccessGrant
+    shortNames:
+    - kag
+  versions:
+  - name: v1alpha1
+    served: true
+    storage: true
+    subresources:
+      status: {}
+    additionalPrinterColumns:
+    - name: Profile
+      type: string
+      jsonPath: .spec.profile
+    - name: Ready
+      type: string
+      jsonPath: .status.conditions[0].status
+    schema:
+      openAPIV3Schema:
+        type: object
+        properties:
+          spec:
+            type: object
+            required:
+            - subject
+            - profile
+            properties:
+              subject:
+                type: object
+                required:
+                - kind
+                - name
+                properties:
+                  kind:
+                    type: string
+                    enum:
+                    - User
+                    - Group
+                    - ServiceAccount
+                  name:
+                    type: string
+                    minLength: 1
+                    maxLength: 253
+                    pattern: ^[^\s]+$
+                x-kubernetes-validations:
+                - rule: '!self.name.startsWith(''system:'')'
+                  message: Reserved subject
+              profile:
+                type: string
+                enum:
+                - view
+                - edit
+                - admin
+              expiresAt:
+                type: string
+                format: date-time
+            x-kubernetes-validations:
+            - rule: self.subject == oldSelf.subject
+              message: Subject is immutable; create a new grant
+          status:
+            type: object
+            x-kubernetes-preserve-unknown-fields: true
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: kiki-kam-auth
+  namespace: kam-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: kiki-kam-auth
+  namespace: kam-system
+rules:
+- apiGroups:
+  - ''
+  resources:
+  - secrets
+  resourceNames:
+  - kiki-kam-identities
+  verbs:
+  - get
+  - update
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: kiki-kam-auth
+  namespace: kam-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: kiki-kam-auth
+subjects:
+- kind: ServiceAccount
+  name: kiki-kam-auth
+  namespace: kam-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kiki-kam-grant-admin
+rules:
+- apiGroups:
+  - access.kam.dustbox.kr
+  resources:
+  - kamaccessgrants
+  verbs:
+  - get
+  - list
+  - create
+  - update
+  - patch
+  - delete
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: kiki-kam-grant-admin
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: kiki-kam-grant-admin
+subjects:
+- kind: Group
+  name: kiki-kam:account-admins
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kiki-kam-namespace-discovery
+rules:
+- apiGroups:
+  - ''
+  resources:
+  - namespaces
+  verbs:
+  - get
+  - list
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: kiki-kam-namespace-discovery
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: kiki-kam-namespace-discovery
+subjects:
+- kind: Group
+  name: kiki-kam:users
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kiki-kam-auth
+  namespace: kam-system
+spec:
+  selector:
+    app: kiki-kam-auth
+  ports:
+  - name: https
+    port: 443
+    targetPort: 8443
+  type: ClusterIP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kiki-kam-auth
+  namespace: kam-system
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kiki-kam-auth
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 0
+      maxUnavailable: 1
+  template:
+    metadata:
+      labels:
+        app: kiki-kam-auth
+    spec:
+      serviceAccountName: kiki-kam-auth
+      terminationGracePeriodSeconds: 20
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        fsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      topologySpreadConstraints:
+      - maxSkew: 1
+        topologyKey: kubernetes.io/hostname
+        whenUnsatisfiable: ScheduleAnyway
+        labelSelector:
+          matchLabels:
+            app: kiki-kam-auth
+      containers:
+      - name: auth
+        image: localhost/kiki-kam-auth:local
+        args:
+        - serve
+        - --audience
+        - REPLACE_WITH_EXISTING_API_AUDIENCE
+        ports:
+        - containerPort: 8443
+        securityContext:
+          readOnlyRootFilesystem: true
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+        resources:
+          requests:
+            cpu: 100m
+            memory: 64Mi
+          limits:
+            cpu: '1'
+            memory: 256Mi
+        readinessProbe:
+          httpGet:
+            scheme: HTTPS
+            path: /readyz
+            port: 8443
+        livenessProbe:
+          httpGet:
+            scheme: HTTPS
+            path: /healthz
+            port: 8443
+        volumeMounts:
+        - name: tls
+          mountPath: /tls
+          readOnly: true
+        - name: webhook
+          mountPath: /webhook
+          readOnly: true
+        imagePullPolicy: Never
+      volumes:
+      - name: tls
+        secret:
+          secretName: kiki-kam-tls
+          defaultMode: 288
+      - name: webhook
+        configMap:
+          name: kiki-kam-webhook-ca
+      imagePullSecrets: []
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: kiki-kam-auth
+  namespace: kam-system
+spec:
+  minAvailable: 0
+  selector:
+    matchLabels:
+      app: kiki-kam-auth
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: kam-ef260e9aa3c673af
+  namespace: kam-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: kam-controller
+  namespace: dev
+rules:
+- apiGroups:
+  - access.kam.dustbox.kr
+  resources:
+  - kamaccessgrants
+  verbs:
+  - get
+  - list
+- apiGroups:
+  - access.kam.dustbox.kr
+  resources:
+  - kamaccessgrants/status
+  verbs:
+  - update
+- apiGroups:
+  - rbac.authorization.k8s.io
+  resources:
+  - rolebindings
+  verbs:
+  - get
+  - create
+  - update
+  - delete
+- apiGroups:
+  - rbac.authorization.k8s.io
+  resources:
+  - clusterroles
+  resourceNames:
+  - view
+  verbs:
+  - bind
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: kam-controller
+  namespace: dev
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: kam-controller
+subjects:
+- kind: ServiceAccount
+  name: kam-ef260e9aa3c673af
+  namespace: kam-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: kam-ef260e9aa3c673af
+  namespace: kam-system
+rules:
+- apiGroups:
+  - coordination.k8s.io
+  resources:
+  - leases
+  verbs:
+  - create
+- apiGroups:
+  - coordination.k8s.io
+  resources:
+  - leases
+  resourceNames:
+  - kam-ef260e9aa3c673af
+  verbs:
+  - get
+  - update
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: kam-ef260e9aa3c673af
+  namespace: kam-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: kam-ef260e9aa3c673af
+subjects:
+- kind: ServiceAccount
+  name: kam-ef260e9aa3c673af
+  namespace: kam-system
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kam-ef260e9aa3c673af
+  namespace: kam-system
+data:
+  controller.py: "\"\"\"Namespace-local KAM reconciler. Uses projected credentials\
+    \ and verified TLS.\"\"\"\nimport copy\nfrom datetime import datetime, timezone\n\
+    import hashlib\nfrom http.server import BaseHTTPRequestHandler, HTTPServer\nimport\
+    \ json\nimport os\nfrom pathlib import Path\nimport ssl\nimport signal\nimport\
+    \ time\nimport threading\nimport uuid\nfrom urllib.error import HTTPError\nfrom\
+    \ urllib.request import Request, urlopen\n\nGROUP = 'access.kam.dustbox.kr'\n\
+    VERSION = GROUP + '/v1alpha1'\nLAST_API_SUCCESS = 0.0\n\n\nclass Health(BaseHTTPRequestHandler):\n\
+    \    stop_event = None\n\n    def do_GET(self):\n        stopping = self.stop_event\
+    \ is not None and self.stop_event.is_set()\n        healthy = self.path == '/healthz'\
+    \ or (self.path == '/readyz' and not stopping and time.monotonic() - LAST_API_SUCCESS\
+    \ < 30)\n        self.send_response(200 if healthy else 503)\n        self.end_headers()\n\
+    \n    def log_message(self, *args):\n        pass\n\n\ndef now():\n    return\
+    \ datetime.now(timezone.utc)\n\n\ndef stamp(value):\n    return value.isoformat().replace('+00:00',\
+    \ 'Z')\n\n\ndef desired_binding(grant, namespace, profiles, at=None):\n    \"\"\
+    \"Validate before mutation. A grant owns one deterministic RoleBinding.\"\"\"\n\
+    \    meta, spec = grant['metadata'], grant['spec']\n    if meta['namespace'] !=\
+    \ namespace:\n        raise ValueError('Namespace mismatch')\n    if spec['profile']\
+    \ not in profiles:\n        raise ValueError('Profile is not allowed by this controller')\n\
+    \    subject = spec['subject']\n    if subject['kind'] not in ('User', 'Group',\
+    \ 'ServiceAccount') or not subject['name']:\n        raise ValueError('Invalid\
+    \ subject')\n    if subject['name'].startswith('system:'):\n        raise ValueError('Reserved\
+    \ subject')\n    if spec.get('expiresAt'):\n        expiry = datetime.fromisoformat(spec['expiresAt'].replace('Z',\
+    \ '+00:00'))\n        if expiry.tzinfo is None:\n            raise ValueError('Expiry\
+    \ needs a timezone')\n        if expiry <= (at or now()):\n            return\
+    \ None\n    s = {'kind': subject['kind'], 'name': subject['name']}\n    if s['kind']\
+    \ == 'ServiceAccount':\n        s['namespace'] = namespace\n    else:\n      \
+    \  s['apiGroup'] = 'rbac.authorization.k8s.io'\n    return {'apiVersion': 'rbac.authorization.k8s.io/v1',\
+    \ 'kind': 'RoleBinding',\n            'metadata': {'name': 'kam-' + hashlib.sha256(meta['uid'].encode()).hexdigest()[:32],\n\
+    \                         'namespace': namespace,\n                         'labels':\
+    \ {'app.kubernetes.io/managed-by': 'kam'},\n                         'ownerReferences':\
+    \ [{'apiVersion': VERSION, 'kind': 'KamAccessGrant',\n                       \
+    \                       'name': meta['name'], 'uid': meta['uid'],\n          \
+    \                                    'controller': True}]},\n            'roleRef':\
+    \ {'apiGroup': 'rbac.authorization.k8s.io', 'kind': 'ClusterRole',\n         \
+    \               'name': spec['profile']}, 'subjects': [s]}\n\n\ndef owned(binding,\
+    \ grant):\n    return any(o.get('uid') == grant['metadata']['uid'] and o.get('controller')\
+    \ is True\n               and o.get('apiVersion') == VERSION and o.get('kind')\
+    \ == 'KamAccessGrant'\n               for o in binding.get('metadata', {}).get('ownerReferences',\
+    \ []))\n\n\nclass API:\n    def __init__(self):\n        self.base = 'https://'\
+    \ + os.environ['KUBERNETES_SERVICE_HOST'] + ':' + os.environ.get('KUBERNETES_SERVICE_PORT',\
+    \ '443')\n        self.credentials = Path(os.environ.get('KAM_CREDENTIALS_DIR',\
+    \ '/var/run/secrets/kubernetes.io/serviceaccount'))\n        self.tls = ssl.create_default_context(cafile=str(self.credentials\
+    \ / 'ca.crt'))\n\n    def call(self, method, path, body=None):\n        headers\
+    \ = {'Authorization': 'Bearer ' + (self.credentials / 'token').read_text().strip(),\n\
+    \                   'Content-Type': 'application/json'}\n        req = Request(self.base\
+    \ + path, headers=headers, method=method,\n                      data=json.dumps(body).encode()\
+    \ if body is not None else None)\n        try:\n            with urlopen(req,\
+    \ context=self.tls, timeout=5) as response:\n                return json.load(response)\n\
+    \        except HTTPError as error:\n            if error.code == 404 and method\
+    \ == 'GET':\n                return None\n            raise RuntimeError('API\
+    \ request failed: HTTP ' + str(error.code)) from None\n\n\ndef reconcile(api,\
+    \ grant, namespace, profiles):\n    base = '/apis/rbac.authorization.k8s.io/v1/namespaces/'\
+    \ + namespace + '/rolebindings'\n    expected = desired_binding(grant, namespace,\
+    \ profiles)\n    name = 'kam-' + hashlib.sha256(grant['metadata']['uid'].encode()).hexdigest()[:32]\n\
+    \    path = base + '/' + name\n    current = api.call('GET', path)\n    if current\
+    \ and not owned(current, grant):\n        raise ValueError('Refusing to adopt\
+    \ an existing binding')\n    if expected is None:\n        if current:\n     \
+    \       api.call('DELETE', path, {'preconditions': {'uid': current['metadata']['uid'],\n\
+    \                                                       'resourceVersion': current['metadata']['resourceVersion']}})\n\
+    \        return 'Expired'\n    if not current:\n        api.call('POST', base,\
+    \ expected)\n    elif current['roleRef'] != expected['roleRef']:\n        # roleRef\
+    \ is immutable. Retrying safely converges after a failed replacement.\n      \
+    \  api.call('DELETE', path, {'preconditions': {'uid': current['metadata']['uid'],\n\
+    \                                                   'resourceVersion': current['metadata']['resourceVersion']}})\n\
+    \        api.call('POST', base, expected)\n    elif current['subjects'] != expected['subjects']:\n\
+    \        updated = copy.deepcopy(current)\n        updated['subjects'] = expected['subjects']\n\
+    \        api.call('PUT', path, updated)\n    return 'Applied'\n\n\ndef acquire(api,\
+    \ namespace, identity, at=None):\n    at = at or now()\n    base = '/apis/coordination.k8s.io/v1/namespaces/'\
+    \ + namespace + '/leases'\n    lease_name = os.environ.get('KAM_LEASE_NAME', 'kam-controller')\n\
+    \    lease = api.call('GET', base + '/' + lease_name)\n    if lease:\n       \
+    \ spec = lease['spec']\n        if spec.get('holderIdentity') and spec['holderIdentity']\
+    \ != identity:\n            renew = datetime.fromisoformat(spec['renewTime'].replace('Z',\
+    \ '+00:00'))\n            if (at - renew).total_seconds() < spec['leaseDurationSeconds']:\n\
+    \                return False\n    else:\n        lease = {'apiVersion': 'coordination.k8s.io/v1',\
+    \ 'kind': 'Lease',\n                 'metadata': {'name': lease_name, 'namespace':\
+    \ namespace}}\n    lease['spec'] = {'holderIdentity': identity, 'leaseDurationSeconds':\
+    \ 60, 'renewTime': stamp(at)}\n    api.call('PUT' if lease['metadata'].get('resourceVersion')\
+    \ else 'POST',\n             base + '/' + lease_name if lease['metadata'].get('resourceVersion')\
+    \ else base, lease)\n    return True\n\n\ndef release(api, namespace, identity):\n\
+    \    \"\"\"Release only our current term, with the API resourceVersion precondition.\"\
+    \"\"\n    path = '/apis/coordination.k8s.io/v1/namespaces/' + namespace + '/leases/'\
+    \ + os.environ.get('KAM_LEASE_NAME', 'kam-controller')\n    current = api.call('GET',\
+    \ path)\n    if not current or current['spec'].get('holderIdentity') != identity:\n\
+    \        return False\n    updated = copy.deepcopy(current)\n    updated['spec']['holderIdentity']\
+    \ = ''\n    api.call('PUT', path, updated)\n    return True\n\n\ndef run(stop=None):\n\
+    \    global LAST_API_SUCCESS\n    if stop is None:\n        stop = threading.Event()\n\
+    \        # PID 1 needs an explicit handler; never perform API writes in it.\n\
+    \        for sig in (signal.SIGTERM, signal.SIGINT):\n            signal.signal(sig,\
+    \ lambda *_: stop.set())\n    namespace = os.environ['KAM_NAMESPACE']\n    lease_namespace\
+    \ = os.environ.get('KAM_LEASE_NAMESPACE', 'kam-system')\n    profiles = set(os.environ.get('KAM_PROFILES',\
+    \ 'view').split(','))\n    if not profiles or not profiles <= {'view', 'edit',\
+    \ 'admin'}:\n        raise ValueError('Only reviewed built-in profiles are supported')\n\
+    \    api = API()\n    Health.stop_event = stop\n    health_server = HTTPServer(('0.0.0.0',\
+    \ 8080), Health)\n    threading.Thread(target=health_server.serve_forever, daemon=True).start()\n\
+    \    # Include the Pod name for incident diagnosis; a fresh UUID fences restarts.\n\
+    \    identity = os.environ.get('KAM_POD_NAME', 'controller') + ':' + str(uuid.uuid4())\n\
+    \    path = '/apis/' + VERSION + '/namespaces/' + namespace + '/kamaccessgrants'\n\
+    \    try:\n        run_loop(api, namespace, lease_namespace, profiles, identity,\
+    \ path, stop)\n    finally:\n        # No reconciliation can run after this point.\
+    \ A stale PUT is rejected\n        # by resourceVersion; failed release falls\
+    \ back to the 60-second lease.\n        try:\n            release(api, lease_namespace,\
+    \ identity)\n        except Exception as error:\n            print('KAM lease\
+    \ release failed: ' + str(error), flush=True)\n        health_server.shutdown()\n\
+    \        health_server.server_close()\n\n\ndef run_loop(api, namespace, lease_namespace,\
+    \ profiles, identity, path, stop):\n    global LAST_API_SUCCESS\n    while not\
+    \ stop.is_set():\n        try:\n            leader = acquire(api, lease_namespace,\
+    \ identity)\n            LAST_API_SUCCESS = time.monotonic()\n            if not\
+    \ leader:\n                stop.wait(2)\n                continue\n          \
+    \  grants = api.call('GET', path)['items']\n            for grant in grants:\n\
+    \                if stop.is_set():\n                    break\n              \
+    \  if not acquire(api, lease_namespace, identity) or stop.is_set():\n        \
+    \            break\n                if grant['metadata'].get('deletionTimestamp'):\n\
+    \                    continue  # Native garbage collection removes owned bindings.\n\
+    \                try:\n                    reason = reconcile(api, grant, namespace,\
+    \ profiles)\n                    ready = reason == 'Applied'\n               \
+    \     message = reason\n                except Exception as error:\n         \
+    \           reason, ready, message = 'ReconcileFailed', False, str(error)\n  \
+    \              previous = grant.get('status', {}).get('conditions', [])\n    \
+    \            condition = {'type': 'Ready', 'status': str(ready), 'reason': reason,\n\
+    \                             'message': message, 'observedGeneration': grant['metadata']['generation'],\n\
+    \                             'lastTransitionTime': stamp(now())}\n          \
+    \      if previous and all(previous[0].get(k) == condition[k] for k in ('status',\
+    \ 'reason', 'message')):\n                    condition['lastTransitionTime']\
+    \ = previous[0]['lastTransitionTime']\n                status = {'observedGeneration':\
+    \ grant['metadata']['generation'], 'conditions': [condition]}\n              \
+    \  if status != grant.get('status'):\n                    body = copy.deepcopy(grant)\n\
+    \                    body['status'] = status\n                    api.call('PUT',\
+    \ path + '/' + grant['metadata']['name'] + '/status', body)\n        except Exception\
+    \ as error:\n            print('KAM reconciliation failed: ' + str(error), flush=True)\n\
+    \        stop.wait(10)\n\n\nif __name__ == '__main__':\n    run()\n"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kam-ef260e9aa3c673af
+  namespace: kam-system
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kam-ef260e9aa3c673af
+  template:
+    metadata:
+      labels:
+        app: kam-ef260e9aa3c673af
+      annotations:
+        access.kam.dustbox.kr/source-sha256: 8f417510d9dfb1c34c6a10f34f202f14c228af3ee6167194de7782b848be0e24
+    spec:
+      serviceAccountName: kam-ef260e9aa3c673af
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      topologySpreadConstraints:
+      - maxSkew: 1
+        topologyKey: kubernetes.io/hostname
+        whenUnsatisfiable: ScheduleAnyway
+        labelSelector:
+          matchLabels:
+            app: kam-ef260e9aa3c673af
+      containers:
+      - name: controller
+        image: docker.io/library/python:3.12.16-slim-bookworm@sha256:623674a14ef93d052bb9b0de4dbf5f28eb578a35263838941cc8aa43213c1487
+        command:
+        - python3
+        - -B
+        - /app/controller.py
+        readinessProbe:
+          httpGet:
+            path: /readyz
+            port: 8080
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 10
+        env:
+        - name: KAM_NAMESPACE
+          value: dev
+        - name: KAM_PROFILES
+          value: view
+        - name: KAM_LEASE_NAMESPACE
+          value: kam-system
+        - name: KAM_LEASE_NAME
+          value: kam-ef260e9aa3c673af
+        - name: KAM_POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        resources:
+          requests:
+            cpu: 20m
+            memory: 32Mi
+          limits:
+            cpu: 200m
+            memory: 128Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+        volumeMounts:
+        - name: source
+          mountPath: /app
+          readOnly: true
+        imagePullPolicy: IfNotPresent
+      volumes:
+      - name: source
+        configMap:
+          name: kam-ef260e9aa3c673af
+      terminationGracePeriodSeconds: 45
+      imagePullSecrets: []
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 0
+      maxUnavailable: 1
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: kam-ef260e9aa3c673af
+  namespace: kam-system
+spec:
+  minAvailable: 0
+  selector:
+    matchLabels:
+      app: kam-ef260e9aa3c673af

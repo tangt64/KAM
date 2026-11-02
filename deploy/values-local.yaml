@@ -1,0 +1,8 @@
+local:
+  allowUnpinnedImages: true
+auth:
+  image: localhost/kiki-kam-auth:local
+  replicas: 1
+  imagePullPolicy: Never
+controller:
+  replicas: 1

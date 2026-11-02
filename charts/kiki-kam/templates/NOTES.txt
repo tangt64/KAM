@@ -1,0 +1,5 @@
+KIKI KAM resources installed. Account state, TLS Secret and client CA ConfigMap are EXTERNAL.
+Before --wait: create the external state/TLS objects and bootstrap the first admin with native admin credentials.
+The chart never edits kube-apiserver static Pods. Enable the mTLS TokenReview webhook separately using the reviewed duststack playbook.
+Removing this release leaves the external account Secret, target namespaces and CRD/Grants intact.
+Before uninstalling auth, restore native API configuration; revoke Grants explicitly when access must end.

@@ -1,0 +1,7 @@
+apiVersion: v2
+appVersion: 0.2.0
+description: KIKI KAM local authentication and namespace-scoped access controllers
+kubeVersion: '>=1.28.0-0'
+name: kiki-kam
+type: application
+version: 0.1.0

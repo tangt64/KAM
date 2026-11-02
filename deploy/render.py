@@ -12,6 +12,8 @@ DEFAULT_IMAGE = 'docker.io/library/python:3.12.16-slim-bookworm@sha256:623674a14
 def manifests(namespace, image, profiles):
     if not re.fullmatch(r'[a-z0-9](?:[-a-z0-9]{0,61}[a-z0-9])?', namespace):
         raise ValueError('Invalid namespace')
+    if namespace in {'default', 'kam-system'} or namespace.startswith('kube-'):
+        raise ValueError('Protected namespace cannot be a controller target')
     if not re.fullmatch(r'[^\s]+@sha256:[0-9a-f]{64}', image):
         raise ValueError('Controller image must use an explicit SHA-256 digest')
     if not set(profiles) <= {'view', 'edit', 'admin'} or not profiles:

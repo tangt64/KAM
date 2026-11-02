@@ -1,0 +1,71 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: kamaccessgrants.access.kam.dustbox.kr
+spec:
+  group: access.kam.dustbox.kr
+  scope: Namespaced
+  names:
+    plural: kamaccessgrants
+    singular: kamaccessgrant
+    kind: KamAccessGrant
+    shortNames:
+    - kag
+  versions:
+  - name: v1alpha1
+    served: true
+    storage: true
+    subresources:
+      status: {}
+    additionalPrinterColumns:
+    - name: Profile
+      type: string
+      jsonPath: .spec.profile
+    - name: Ready
+      type: string
+      jsonPath: .status.conditions[0].status
+    schema:
+      openAPIV3Schema:
+        type: object
+        properties:
+          spec:
+            type: object
+            required:
+            - subject
+            - profile
+            properties:
+              subject:
+                type: object
+                required:
+                - kind
+                - name
+                properties:
+                  kind:
+                    type: string
+                    enum:
+                    - User
+                    - Group
+                    - ServiceAccount
+                  name:
+                    type: string
+                    minLength: 1
+                    maxLength: 253
+                    pattern: ^[^\s]+$
+                x-kubernetes-validations:
+                - rule: '!self.name.startsWith(''system:'')'
+                  message: Reserved subject
+              profile:
+                type: string
+                enum:
+                - view
+                - edit
+                - admin
+              expiresAt:
+                type: string
+                format: date-time
+            x-kubernetes-validations:
+            - rule: self.subject == oldSelf.subject
+              message: Subject is immutable; create a new grant
+          status:
+            type: object
+            x-kubernetes-preserve-unknown-fields: true

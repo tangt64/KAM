@@ -1,0 +1,22 @@
+{{- include "kam.validate" . -}}
+{{- if .Values.auth.enabled }}
+{{- $root := . -}}
+{{- $source := .Files.Get "files/auth.json" | replace (toJson "__AUTH_IMAGE__") (toJson .Values.auth.image) | replace (toJson "__API_AUDIENCE__") (toJson .Values.auth.audience) -}}
+{{- range $doc := ($source | fromJsonArray) -}}
+{{- if eq $doc.kind "Deployment" -}}
+{{- $_ := set $doc.spec "replicas" $root.Values.auth.replicas -}}
+{{- $pod := $doc.spec.template.spec -}}
+{{- $container := index $pod.containers 0 -}}
+{{- $_ := set $container "imagePullPolicy" $root.Values.auth.imagePullPolicy -}}
+{{- $_ := set $pod "imagePullSecrets" $root.Values.imagePullSecrets -}}
+{{- if eq (int $root.Values.auth.replicas) 1 }}{{ $_ := set (index $pod.topologySpreadConstraints 0) "whenUnsatisfiable" "ScheduleAnyway" }}{{ end -}}
+{{- else if eq $doc.kind "PodDisruptionBudget" -}}
+{{- if eq (int $root.Values.auth.replicas) 1 }}{{ $_ := set $doc.spec "minAvailable" 0 }}{{ end -}}
+{{- else if eq $doc.kind "Service" -}}
+{{- $_ := set $doc.spec "type" $root.Values.auth.service.type -}}
+{{- if eq $root.Values.auth.service.type "NodePort" }}{{ $_ := set (index $doc.spec.ports 0) "nodePort" $root.Values.auth.service.nodePort }}{{ end -}}
+{{- end }}
+---
+{{ toYaml $doc }}
+{{ end -}}
+{{- end }}

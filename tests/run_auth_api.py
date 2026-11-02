@@ -126,15 +126,25 @@ def main():
                 return m
             renderer, auth_renderer = module('render'), module('render_auth')
             controller_name = 'kam-' + hashlib.sha256(b'dev').hexdigest()[:16]
-            for obj in renderer.manifests('dev', renderer.DEFAULT_IMAGE, ['view']):
-                kubectl('apply', '--server-side', '--dry-run=server', '-f', '-', body=obj)
-                kubectl('apply', '--server-side', '-f', '-', body=obj)
-            kubectl('wait', '--for=condition=Established', 'crd/kamaccessgrants.access.kam.dustbox.kr', '--timeout=30s')
-            auth_objects = auth_renderer.manifests('example.invalid/kam@sha256:' + 'a' * 64,
-                                                  audience='https://kubernetes.default.svc')
-            for obj in auth_objects:
-                kubectl('apply', '--server-side', '--dry-run=server', '-f', '-', body=obj)
-                kubectl('apply', '--server-side', '-f', '-', body=obj)
+            package_mode = os.environ.get('KAM_PACKAGE_MODE', '')
+            helm = os.environ.get('HELM_BINARY', 'helm')
+            package_values = save('package-values.json', {'auth': {'image': 'example.invalid/kam@sha256:' + 'a' * 64,
+                'audience': 'https://kubernetes.default.svc'}})
+            if package_mode == 'helm':
+                run(helm, 'install', 'kiki-kam', ROOT / 'charts/kiki-kam', '-n', 'kam-system',
+                    '--kubeconfig', admin_cfg, '-f', package_values, '--timeout=60s')
+                report['checks']['helm_install_accepted_by_real_api'] = True
+                report['helm_version'] = run(helm, 'version', '--short').stdout.strip()
+            else:
+                for obj in renderer.manifests('dev', renderer.DEFAULT_IMAGE, ['view']):
+                    kubectl('apply', '--server-side', '--dry-run=server', '-f', '-', body=obj)
+                    kubectl('apply', '--server-side', '-f', '-', body=obj)
+                kubectl('wait', '--for=condition=Established', 'crd/kamaccessgrants.access.kam.dustbox.kr', '--timeout=30s')
+                auth_objects = auth_renderer.manifests('example.invalid/kam@sha256:' + 'a' * 64,
+                                                      audience='https://kubernetes.default.svc')
+                for obj in auth_objects:
+                    kubectl('apply', '--server-side', '--dry-run=server', '-f', '-', body=obj)
+                    kubectl('apply', '--server-side', '-f', '-', body=obj)
             kubectl('create', '-f', '-', body=auth_renderer.state_secret())
             kubectl('patch', 'clusterrole', 'view', '--type=merge', '-p', json.dumps({
                 'rules': [{'apiGroups': [''], 'resources': ['pods'], 'verbs': ['get', 'list']}]}))
@@ -267,8 +277,12 @@ def main():
             report['checks']['grant_expiry_revokes_actual_user_access'] = True
             # Reapply resources without ever reapplying the credential Secret.
             before = json.loads(kubectl('-n', 'kam-system', 'get', 'secret', 'kiki-kam-identities', '-ojson').stdout)['data']
-            for obj in auth_objects:
-                kubectl('apply', '--server-side', '-f', '-', body=obj)
+            if package_mode == 'helm':
+                run(helm, 'upgrade', 'kiki-kam', ROOT / 'charts/kiki-kam', '-n', 'kam-system',
+                    '--kubeconfig', admin_cfg, '-f', package_values, '--timeout=60s')
+            else:
+                for obj in auth_objects:
+                    kubectl('apply', '--server-side', '-f', '-', body=obj)
             after = json.loads(kubectl('-n', 'kam-system', 'get', 'secret', 'kiki-kam-identities', '-ojson').stdout)['data']
             assert before == after
             assert kubectl('-n', 'kam-system', 'get', 'secret', 'kiki-kam-identities', cfg=alice_login, required=False).returncode != 0
@@ -282,6 +296,21 @@ def main():
             report['checks']['webhook_requires_dedicated_mtls_client'] = True
             assert cli(admin_login, 'user', 'disable', 'admin', required=False).returncode != 0
             report['checks']['last_administrator_preserved'] = True
+            if package_mode == 'helm':
+                before = json.loads(kubectl('-n', 'kam-system', 'get', 'secret', 'kiki-kam-identities', '-ojson').stdout)['data']
+                changed_values = json.loads(package_values.read_text())
+                changed_values['auth']['replicas'] = 1
+                changed_values['controller'] = {'replicas': 1}
+                package_values.write_text(json.dumps(changed_values))
+                run(helm, 'upgrade', 'kiki-kam', ROOT / 'charts/kiki-kam', '-n', 'kam-system',
+                    '--kubeconfig', admin_cfg, '-f', package_values, '--timeout=60s')
+                after_upgrade = json.loads(kubectl('-n', 'kam-system', 'get', 'secret', 'kiki-kam-identities', '-ojson').stdout)['data']
+                assert before == after_upgrade
+                run(helm, 'uninstall', 'kiki-kam', '-n', 'kam-system', '--kubeconfig', admin_cfg, '--timeout=60s')
+                assert before == json.loads(kubectl('-n', 'kam-system', 'get', 'secret', 'kiki-kam-identities', '-ojson').stdout)['data']
+                kubectl('get', 'crd/kamaccessgrants.access.kam.dustbox.kr')
+                kubectl('get', 'namespace', 'dev', 'kam-system')
+                report['checks']['helm_upgrade_uninstall_preserve_state_crd_namespaces'] = True
             report['status'] = 'passed'
         except Exception as e:
             report['error'] = str(e)
@@ -298,7 +327,7 @@ def main():
             for log in logs:
                 log.close()
             report['finished_at'] = datetime.now(timezone.utc).isoformat()
-            output = ROOT / '.tools/auth-api-result.json'
+            output = ROOT / ('.tools/package-api-result.json' if os.environ.get('KAM_PACKAGE_MODE') else '.tools/auth-api-result.json')
             output.parent.mkdir(exist_ok=True)
             output.write_text(json.dumps(report, indent=2) + '\n')
             print(json.dumps(report, indent=2))

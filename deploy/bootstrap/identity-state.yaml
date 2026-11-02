@@ -1,0 +1,9 @@
+# FIRST INSTALL ONLY: kubectl create -f this-file. Never apply, replace, or Helm-manage account state.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: kiki-kam-identities
+  namespace: kam-system
+type: Opaque
+data:
+  state.json: eyJzY2hlbWEiOjEsInVzZXJzIjp7fSwic2Vzc2lvbnMiOnt9fQ==
