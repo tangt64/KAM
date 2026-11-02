@@ -187,12 +187,62 @@ def main():
             def cli(cfg, *words, password=None, required=True):
                 return run(KAM, '--kubeconfig', cfg, *words, input=password, env=env, required=required)
 
-            def login(cfg, name, password, origin=auth):
+            def login(cfg, name, password, origin=auth, required=True):
                 return cli(cfg, 'login', origin, '--username', name, '--server', base,
                     '--ca-file', str(root / 'auth-ca.crt'), '--api-ca-file', str(root / 'ca.crt'),
-                    '--password-stdin', password=password)
+                    '--password-stdin', password=password, required=required)
+
+            def http_status(url, *, body=None, token=None, api=False):
+                headers = {'Content-Type': 'application/json'}
+                if token is not None:
+                    headers['Authorization'] = 'Bearer ' + token
+                request = urllib.request.Request(url, data=json.dumps(body).encode() if body is not None else None,
+                                                 headers=headers)
+                context = ssl.create_default_context(cafile=str(root / ('ca.crt' if api else 'auth-ca.crt')))
+                try:
+                    with urllib.request.urlopen(request, context=context, timeout=5) as response:
+                        return response.status
+                except urllib.error.HTTPError as error:
+                    return error.code
 
             login(admin_login, 'admin', initial_password)
+            # An isolated kubeconfig and raw HTTPS requests cannot inherit admin
+            # credentials from KUBECONFIG, kubectl defaults or a previous login.
+            probe_name, probe_password = 'probe-' + secrets.token_hex(4), secrets.token_urlsafe(24)
+            probe_cfg = root / 'probe-login.json'
+            probe = json.loads(cli(admin_login, 'user', 'create', probe_name, '--password-stdin', password=probe_password).stdout)
+            denied = {
+                'anonymous_whoami': http_status(auth + '/v1/me'),
+                'anonymous_user_list': http_status(auth + '/v1/users'),
+                'anonymous_user_create': http_status(auth + '/v1/users', body={'name': 'must-not-exist', 'password': secrets.token_urlsafe(24)}),
+                'anonymous_namespace_pods': http_status(base + '/api/v1/namespaces/dev/pods', api=True),
+                'anonymous_state_secret': http_status(base + '/api/v1/namespaces/kam-system/secrets/kiki-kam-identities', api=True),
+                'wrong_password': http_status(auth + '/v1/login', body={'username': probe_name, 'password': secrets.token_urlsafe(24)}),
+                'unknown_user': http_status(auth + '/v1/login', body={'username': 'missing-' + secrets.token_hex(4), 'password': secrets.token_urlsafe(24)}),
+            }
+            forged = 'kiki_' + secrets.token_urlsafe(32)
+            denied['forged_session_whoami'] = http_status(auth + '/v1/me', token=forged)
+            denied['forged_session_namespace_pods'] = http_status(base + '/api/v1/namespaces/dev/pods', token=forged, api=True)
+            assert all(status in (401, 403) for status in denied.values()), denied
+            assert all(denied[key] == 401 for key in denied if not key.startswith('anonymous_namespace') and key != 'anonymous_state_secret'), denied
+            bad_login = login(probe_cfg, probe_name, secrets.token_urlsafe(24), required=False)
+            assert bad_login.returncode != 0 and '401' in bad_login.stderr
+            assert not probe_cfg.exists(), 'failed login persisted a usable kubeconfig'
+            report['checks']['anonymous_wrong_password_unknown_user_forged_session_denied'] = denied
+            login(probe_cfg, probe_name, probe_password)
+            assert json.loads(cli(probe_cfg, 'whoami').stdout)['id'] == probe['id']
+            before_grant = kubectl('-n', 'dev', 'get', 'pods', cfg=probe_cfg, required=False)
+            assert before_grant.returncode != 0 and 'forbidden' in before_grant.stderr.lower()
+            cli(admin_login, '-n', 'dev', 'grant', probe_name)
+            kubectl('-n', 'dev', 'get', 'pods', cfg=probe_cfg)
+            assert cli(probe_cfg, 'user', 'list', required=False).returncode != 0
+            report['checks']['random_user_login_then_explicit_namespace_rbac'] = {
+                'username': probe_name, 'whoami_matches_created_uid': True,
+                'pods_forbidden_before_grant': True, 'pods_allowed_after_grant': True,
+                'user_administration_denied': True, 'failed_login_wrote_no_kubeconfig': True,
+            }
+            cli(probe_cfg, 'logout')
+            cli(admin_login, 'user', 'delete', probe_name)
             alice_password = secrets.token_urlsafe(24)
             alice = json.loads(cli(admin_login, 'user', 'create', 'alice', '--password-stdin', password=alice_password).stdout)
             cli(admin_login, '-n', 'dev', 'grant', 'alice')
@@ -257,6 +307,8 @@ def main():
             report['checks']['password_reset_and_logout_revoke_sessions'] = True
             login(alice_login, 'alice', replacement_password)
             cli(admin_login, 'user', 'disable', 'alice')
+            denied['disabled_user_login'] = http_status(auth + '/v1/login', body={'username': 'alice', 'password': replacement_password})
+            assert denied['disabled_user_login'] == 401
             revoke_started = time.monotonic()
             eventually(lambda: revoked(alice_login), seconds=25)
             report.setdefault('revocation_seconds', {})['account_disable'] = round(time.monotonic() - revoke_started, 3)

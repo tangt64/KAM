@@ -87,3 +87,5 @@ Go race 검사, 공식 Kubernetes 1.37.0 envtest 실제 API/etcd의 CRD·Lease·
 원래 명령은 `kam legacy user/group/sa ...`로 보존했습니다. [원본 README](docs/LEGACY.md)는 이력 참고이며 기존 logical User/RBAC 명령 자체가 로그인 계정을 생성하지는 않습니다. root `LICENSE`의 GPL-3.0 이력과, 독립 실행 Python controller의 `deploy/LICENSE` GPL-2.0을 유지합니다.
 
 실제 Pod 배포·로그인/RBAC·TLS 갱신·실패 복구 결과와 화면은 [Helm 터미널랩 실증](docs/HELM-LIVE.md)에 있습니다.
+
+임의 사용자 생성·로그인 및 미인증/위조 토큰 차단 검증은 [로그인 실증 기록](docs/LOGIN-VERIFICATION.md)을 확인하세요.
